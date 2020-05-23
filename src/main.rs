@@ -1,3 +1,8 @@
+extern crate select;
+
+use select::document::Document;
+use select::predicate::Name;
+
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     let pypi_root = String::from("https://pypi.org/simple/");
@@ -19,11 +24,15 @@ async fn main() -> Result<(), reqwest::Error> {
     for plugin in pulp_plugins.iter() {
         let res = reqwest::get(&format!("{}{}", pypi_root, (*plugin).to_string())).await?;
 
-        println!("Status: {}", res.status());
+        assert!(res.status().is_success());
 
         let body = res.text().await?;
 
-        println!("Body:\n\n{}", body);
+        Document::from_read(body.as_bytes())
+            .unwrap()
+            .find(Name("a"))
+            .filter_map(|n| n.attr("href"))
+            .for_each(|x| println!("{}", x));
     }
 
     Ok(())

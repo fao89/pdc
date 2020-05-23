@@ -8,4 +8,5 @@ edition = "2018"
 
 [dependencies]
 reqwest = "0.10.4"
+select = "0.4.3"
 tokio = { version = "0.2", features = ["macros"] }
