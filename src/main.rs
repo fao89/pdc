@@ -17,7 +17,7 @@ async fn main() -> Result<(), reqwest::Error> {
     ];
 
     for plugin in pulp_plugins.iter() {
-        let res = reqwest::get(&format!("{}{}", pypi_root, plugin.to_string())).await?;
+        let res = reqwest::get(&format!("{}{}", pypi_root, (*plugin).to_string())).await?;
 
         println!("Status: {}", res.status());
 
