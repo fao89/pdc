@@ -23,16 +23,23 @@ async fn main() -> Result<(), reqwest::Error> {
 
     for plugin in pulp_plugins.iter() {
         let res = reqwest::get(&format!("{}{}", pypi_root, (*plugin).to_string())).await?;
-
         assert!(res.status().is_success());
 
         let body = res.text().await?;
 
-        Document::from_read(body.as_bytes())
-            .unwrap()
+        let document = Document::from_read(body.as_bytes()).unwrap();
+        let link = document
             .find(Name("a"))
-            .filter_map(|n| n.attr("href"))
-            .for_each(|x| println!("{}", x));
+            .last()
+            .unwrap()
+            .attr("href")
+            .unwrap();
+
+        let version = link.split("-").nth(1).unwrap();
+        println!("{} - {}", plugin, version);
+
+        let response = reqwest::get(link).await?;
+        assert!(response.status().is_success());
     }
 
     Ok(())
