@@ -38,7 +38,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap();
 
         let version = link.split('-').nth(1).unwrap();
-        println!("{} - {}", plugin, version);
 
         let mut tmpfile = tempfile::tempfile().unwrap();
         let mut response = reqwest::blocking::get(link)?;
@@ -53,7 +52,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut metadata = zip.by_name(file_name).unwrap();
         let mut contents = String::new();
         metadata.read_to_string(&mut contents)?;
-        println!("{}", contents);
+        contents
+            .lines()
+            .filter(|l| l.contains("Requires-Dist: pulpcore"))
+            .for_each(|x| {
+                println!(
+                    "{}-{} {}",
+                    plugin,
+                    version,
+                    x.replace("Requires-Dist", "requires")
+                )
+            });
     }
 
     Ok(())
