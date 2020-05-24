@@ -35,7 +35,7 @@ async fn main() -> Result<(), reqwest::Error> {
             .attr("href")
             .unwrap();
 
-        let version = link.split("-").nth(1).unwrap();
+        let version = link.split('-').nth(1).unwrap();
         println!("{} - {}", plugin, version);
 
         let response = reqwest::get(link).await?;
