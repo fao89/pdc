@@ -1,10 +1,12 @@
 extern crate select;
+extern crate tempfile;
+extern crate zip;
 
 use select::document::Document;
 use select::predicate::Name;
+use std::io::Read;
 
-#[tokio::main]
-async fn main() -> Result<(), reqwest::Error> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pypi_root = String::from("https://pypi.org/simple/");
     let pulp_plugins = [
         "galaxy-ng",
@@ -22,10 +24,10 @@ async fn main() -> Result<(), reqwest::Error> {
     ];
 
     for plugin in pulp_plugins.iter() {
-        let res = reqwest::get(&format!("{}{}", pypi_root, (*plugin).to_string())).await?;
+        let res = reqwest::blocking::get(&format!("{}{}", pypi_root, (*plugin).to_string()))?;
         assert!(res.status().is_success());
 
-        let body = res.text().await?;
+        let body = res.text()?;
 
         let document = Document::from_read(body.as_bytes()).unwrap();
         let link = document
@@ -38,8 +40,20 @@ async fn main() -> Result<(), reqwest::Error> {
         let version = link.split('-').nth(1).unwrap();
         println!("{} - {}", plugin, version);
 
-        let response = reqwest::get(link).await?;
+        let mut tmpfile = tempfile::tempfile().unwrap();
+        let mut response = reqwest::blocking::get(link)?;
         assert!(response.status().is_success());
+        response.copy_to(&mut tmpfile)?;
+        let mut zip = zip::ZipArchive::new(tmpfile).unwrap();
+        let file_name = &format!(
+            "{}-{}.dist-info/METADATA",
+            (*plugin).to_string().replace("-", "_"),
+            version
+        );
+        let mut metadata = zip.by_name(file_name).unwrap();
+        let mut contents = String::new();
+        metadata.read_to_string(&mut contents)?;
+        println!("{}", contents);
     }
 
     Ok(())
