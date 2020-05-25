@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .nth(1)
             .unwrap()
             .split(')')
-            .nth(0)
+            .next()
             .unwrap();
         let default = VersionReq::parse(&format!(">{}", pulpcore_version)).unwrap();
         let r = VersionReq::parse(req.replace("~=", "~").as_str()).unwrap_or(default);
