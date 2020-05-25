@@ -1,13 +1,9 @@
-extern crate select;
-extern crate tempfile;
-extern crate zip;
-
-use select::document::Document;
-use select::predicate::Name;
-use std::io::Read;
+use semver::Version;
+use semver::VersionReq;
+extern crate serde_json;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let pypi_root = String::from("https://pypi.org/simple/");
+    let pypi_root = String::from("https://pypi.org/pypi/");
     let pulp_plugins = [
         "galaxy-ng",
         "pulp-ansible",
@@ -23,46 +19,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "pulp-rpm",
     ];
 
+    let res = reqwest::blocking::get(&format!("{}pulpcore/json", pypi_root))?;
+    assert!(res.status().is_success());
+
+    let pypi_json: serde_json::Value = res.json()?;
+    let pulpcore_version = pypi_json["info"]["version"].as_str().unwrap();
+    println!("Lastest pulpcore version: {}", pulpcore_version);
+
     for plugin in pulp_plugins.iter() {
-        let res = reqwest::blocking::get(&format!("{}{}", pypi_root, (*plugin).to_string()))?;
+        let res = reqwest::blocking::get(&format!("{}{}/json", pypi_root, (*plugin).to_string()))?;
         assert!(res.status().is_success());
 
-        let body = res.text()?;
-
-        let document = Document::from_read(body.as_bytes()).unwrap();
-        let link = document
-            .find(Name("a"))
-            .last()
+        let pypi_json: serde_json::Value = res.json()?;
+        let plugin_version = pypi_json["info"]["version"].as_str().unwrap();
+        let pulpcore_requirement = pypi_json["info"]["requires_dist"]
+            .as_array()
             .unwrap()
-            .attr("href")
+            .iter()
+            .map(|i| i.to_string())
+            .filter(|l| l.contains("pulpcore"))
+            .last()
             .unwrap();
-
-        let version = link.split('-').nth(1).unwrap();
-
-        let mut tmpfile = tempfile::tempfile().unwrap();
-        let mut response = reqwest::blocking::get(link)?;
-        assert!(response.status().is_success());
-        response.copy_to(&mut tmpfile)?;
-        let mut zip = zip::ZipArchive::new(tmpfile).unwrap();
-        let file_name = &format!(
-            "{}-{}.dist-info/METADATA",
-            (*plugin).to_string().replace("-", "_"),
-            version
+        let req = pulpcore_requirement
+            .as_str()
+            .split('(')
+            .nth(1)
+            .unwrap()
+            .split(')')
+            .nth(0)
+            .unwrap();
+        let default = VersionReq::parse(&format!(">{}", pulpcore_version)).unwrap();
+        let r = VersionReq::parse(req.replace("~=", "~").as_str()).unwrap_or(default);
+        let v = Version::parse(pulpcore_version).unwrap();
+        println!(
+            "{}-{} requirement {} is compatible with pulpcore-{}: {}",
+            plugin,
+            plugin_version,
+            pulpcore_requirement,
+            pulpcore_version,
+            r.matches(&v)
         );
-        let mut metadata = zip.by_name(file_name).unwrap();
-        let mut contents = String::new();
-        metadata.read_to_string(&mut contents)?;
-        contents
-            .lines()
-            .filter(|l| l.contains("Requires-Dist: pulpcore"))
-            .for_each(|x| {
-                println!(
-                    "{}-{} {}",
-                    plugin,
-                    version,
-                    x.replace("Requires-Dist", "requires")
-                )
-            });
     }
 
     Ok(())
