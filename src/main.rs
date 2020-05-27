@@ -1,9 +1,12 @@
+use futures::future::try_join_all;
+use reqwest;
 use semver::Version;
 use semver::VersionReq;
-extern crate serde_json;
+use serde_json::Value;
+use std::error::Error;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let pypi_root = String::from("https://pypi.org/pypi/");
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     let pulp_plugins = [
         "galaxy-ng",
         "pulp-ansible",
@@ -19,18 +22,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "pulp-rpm",
     ];
 
-    let res = reqwest::blocking::get(&format!("{}pulpcore/json", pypi_root))?;
-    assert!(res.status().is_success());
-
-    let pypi_json: serde_json::Value = res.json()?;
-    let pulpcore_version = pypi_json["info"]["version"].as_str().unwrap();
-    println!("Lastest pulpcore version: {}", pulpcore_version);
+    let client = reqwest::Client::builder().build()?;
+    let mut data_plugins = Vec::new();
 
     for plugin in pulp_plugins.iter() {
-        let res = reqwest::blocking::get(&format!("{}{}/json", pypi_root, (*plugin).to_string()))?;
-        assert!(res.status().is_success());
+        let data = get_pypi_data(&client, plugin);
+        data_plugins.push(data);
+    }
 
-        let pypi_json: serde_json::Value = res.json()?;
+    let results = try_join_all(data_plugins).await?;
+
+    let res = reqwest::get("https://pypi.org/pypi/pulpcore/json").await?;
+    assert!(res.status().is_success());
+
+    let pypi_json: Value = res.json().await?;
+    let pulpcore_version = pypi_json["info"]["version"].as_str().unwrap();
+
+    println!("Lastest pulpcore version: {}", pulpcore_version);
+
+    for result in results {
+        let pypi_json: Value = result;
+        let name = pypi_json["info"]["name"].as_str().unwrap();
         let plugin_version = pypi_json["info"]["version"].as_str().unwrap();
         let pulpcore_requirement = pypi_json["info"]["requires_dist"]
             .as_array()
@@ -53,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let v = Version::parse(pulpcore_version).unwrap();
         println!(
             "{}-{} requirement {} is compatible with pulpcore-{}: {}",
-            plugin,
+            name,
             plugin_version,
             pulpcore_requirement,
             pulpcore_version,
@@ -62,4 +74,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+async fn get_pypi_data(client: &reqwest::Client, plugin: &str) -> Result<Value, Box<dyn Error>> {
+    let pypi_root = String::from("https://pypi.org/pypi/");
+    let address = format!("{}{}/json", pypi_root, plugin);
+    let result = client.get(&address).send().await?.json().await?;
+    Ok(result)
 }
