@@ -1,5 +1,4 @@
 use futures::future::try_join_all;
-use reqwest;
 use semver::Version;
 use semver::VersionReq;
 use serde_json::Value;
