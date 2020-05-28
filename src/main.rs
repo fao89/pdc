@@ -32,12 +32,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let results = try_join_all(data_plugins).await?;
 
-    let pypi_json: Value = client
-        .get("https://pypi.org/pypi/pulpcore/json")
-        .send()
-        .await?
-        .json()
-        .await?;
+    let pypi_json: Value = get_pypi_data(&client, "pulpcore").await?;
     let pulpcore_version = pypi_json["info"]["version"].as_str().unwrap();
 
     println!("Lastest pulpcore version: {}", pulpcore_version);
