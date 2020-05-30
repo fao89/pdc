@@ -82,7 +82,7 @@ fn print_compatible_plugins(pulpcore_version: &str, plugins: Vec<Value>) {
 }
 
 fn check_semver(requirement: &str, version: &str) -> bool {
-    let default_req = VersionReq::parse(&format!("<3.0.1")).unwrap();
+    let default_req = VersionReq::parse("<3.0.1").unwrap();
     let r = VersionReq::parse(requirement).unwrap_or(default_req);
     let v = Version::parse(version).unwrap();
     r.matches(&v)
