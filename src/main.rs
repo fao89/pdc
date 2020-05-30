@@ -30,13 +30,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
         data_plugins.push(data);
     }
 
-    let results = try_join_all(data_plugins).await?;
+    let mut results = try_join_all(data_plugins).await?;
 
     let pulpcore_json: Value = get_pypi_data(&client, "pulpcore").await?;
-    let pulpcore_version = pulpcore_json["info"]["version"].as_str().unwrap();
 
-    println!("Lastest pulpcore version: {}", pulpcore_version);
-    print_compatible_plugins(pulpcore_version, results);
+    let pulpcore_releases = pulpcore_json["releases"].as_object().unwrap().keys();
+    for version in pulpcore_releases.rev() {
+        if version.contains("3.0.0") {
+            // avoiding rc versions
+            print_compatible_plugins(&"3.0.0", &mut results);
+            break;
+        }
+        print_compatible_plugins(&version, &mut results);
+    }
 
     Ok(())
 }
@@ -48,7 +54,8 @@ async fn get_pypi_data(client: &Client, plugin: &str) -> Result<Value, Box<dyn E
     Ok(result)
 }
 
-fn print_compatible_plugins(pulpcore_version: &str, plugins: Vec<Value>) {
+fn print_compatible_plugins(pulpcore_version: &str, plugins: &mut Vec<Value>) {
+    println!("\nCompatible with pulpcore-{}", pulpcore_version);
     for pypi_json in plugins {
         let name = pypi_json["info"]["name"].as_str().unwrap();
         let plugin_version = pypi_json["info"]["version"].as_str().unwrap();
@@ -70,14 +77,12 @@ fn print_compatible_plugins(pulpcore_version: &str, plugins: Vec<Value>) {
             .map(|i| i.replace("~=", "~"))
             .unwrap();
 
-        println!(
-            "{}-{} requirement: {} || pulpcore-{} matches the requirement: {}",
-            name,
-            plugin_version,
-            requires_dist,
-            pulpcore_version,
-            check_semver(&pulpcore_requirement.as_str(), &pulpcore_version),
-        );
+        if check_semver(&pulpcore_requirement.as_str(), &pulpcore_version) {
+            println!(
+                " -> {}-{} requirement: {}",
+                name, plugin_version, requires_dist,
+            );
+        }
     }
 }
 
