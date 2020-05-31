@@ -3,6 +3,7 @@ use reqwest::Client;
 use semver::Version;
 use semver::VersionReq;
 use serde_json::Value;
+use spinners::{Spinner, Spinners};
 use std::error::Error;
 
 #[tokio::main]
@@ -25,18 +26,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::builder().build()?;
     let mut data_plugins = Vec::new();
 
+    let sp = Spinner::new(Spinners::Dots9, "Loading ...".into());
+
     for plugin in pulp_plugins.iter() {
         let data = get_pypi_data(&client, plugin);
         data_plugins.push(data);
     }
 
-    let results = try_join_all(data_plugins).await?;
+    let mut results = try_join_all(data_plugins).await?;
 
     let pulpcore_json: Value = get_pypi_data(&client, "pulpcore").await?;
-    let pulpcore_version = pulpcore_json["info"]["version"].as_str().unwrap();
+    sp.stop();
 
-    println!("Lastest pulpcore version: {}", pulpcore_version);
-    print_compatible_plugins(pulpcore_version, results);
+    let pulpcore_releases = pulpcore_json["releases"].as_object().unwrap().keys();
+    for version in pulpcore_releases.rev() {
+        if version.contains("3.0.0") {
+            // avoiding rc versions
+            print_compatible_plugins(&"3.0.0", &mut results);
+            break;
+        }
+        print_compatible_plugins(&version, &mut results);
+    }
 
     Ok(())
 }
@@ -48,8 +58,11 @@ async fn get_pypi_data(client: &Client, plugin: &str) -> Result<Value, Box<dyn E
     Ok(result)
 }
 
-fn print_compatible_plugins(pulpcore_version: &str, plugins: Vec<Value>) {
-    for pypi_json in plugins {
+fn print_compatible_plugins(pulpcore_version: &str, plugins: &mut Vec<Value>) {
+    let mut to_remove = Vec::new();
+    let mut index = 0;
+    let mut pulpcore_printed = false;
+    for pypi_json in plugins.iter() {
         let name = pypi_json["info"]["name"].as_str().unwrap();
         let plugin_version = pypi_json["info"]["version"].as_str().unwrap();
         let requires_dist = pypi_json["info"]["requires_dist"]
@@ -70,14 +83,21 @@ fn print_compatible_plugins(pulpcore_version: &str, plugins: Vec<Value>) {
             .map(|i| i.replace("~=", "~"))
             .unwrap();
 
-        println!(
-            "{}-{} requirement: {} || pulpcore-{} matches the requirement: {}",
-            name,
-            plugin_version,
-            requires_dist,
-            pulpcore_version,
-            check_semver(&pulpcore_requirement.as_str(), &pulpcore_version),
-        );
+        if check_semver(&pulpcore_requirement.as_str(), &pulpcore_version) {
+            if !pulpcore_printed {
+                println!("\nCompatible with pulpcore-{}", pulpcore_version);
+            }
+            pulpcore_printed = true;
+            println!(
+                " -> {}-{} requirement: {}",
+                name, plugin_version, requires_dist,
+            );
+            to_remove.push(index);
+        }
+        index += 1;
+    }
+    for n in to_remove.iter().rev() {
+        plugins.remove(*n);
     }
 }
 
