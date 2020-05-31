@@ -55,8 +55,10 @@ async fn get_pypi_data(client: &Client, plugin: &str) -> Result<Value, Box<dyn E
 }
 
 fn print_compatible_plugins(pulpcore_version: &str, plugins: &mut Vec<Value>) {
-    println!("\nCompatible with pulpcore-{}", pulpcore_version);
-    for pypi_json in plugins {
+    let mut to_remove = Vec::new();
+    let mut index = 0;
+    let mut pulpcore_printed = false;
+    for pypi_json in plugins.iter() {
         let name = pypi_json["info"]["name"].as_str().unwrap();
         let plugin_version = pypi_json["info"]["version"].as_str().unwrap();
         let requires_dist = pypi_json["info"]["requires_dist"]
@@ -78,11 +80,20 @@ fn print_compatible_plugins(pulpcore_version: &str, plugins: &mut Vec<Value>) {
             .unwrap();
 
         if check_semver(&pulpcore_requirement.as_str(), &pulpcore_version) {
+            if !pulpcore_printed {
+                println!("\nCompatible with pulpcore-{}", pulpcore_version);
+            }
+            pulpcore_printed = true;
             println!(
                 " -> {}-{} requirement: {}",
                 name, plugin_version, requires_dist,
             );
+            to_remove.push(index);
         }
+        index += 1;
+    }
+    for n in to_remove.iter().rev() {
+        plugins.remove(*n);
     }
 }
 
