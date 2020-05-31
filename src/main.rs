@@ -3,6 +3,7 @@ use reqwest::Client;
 use semver::Version;
 use semver::VersionReq;
 use serde_json::Value;
+use spinners::{Spinner, Spinners};
 use std::error::Error;
 
 #[tokio::main]
@@ -25,6 +26,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::builder().build()?;
     let mut data_plugins = Vec::new();
 
+    let sp = Spinner::new(Spinners::Dots9, "Loading ...".into());
+
     for plugin in pulp_plugins.iter() {
         let data = get_pypi_data(&client, plugin);
         data_plugins.push(data);
@@ -33,6 +36,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut results = try_join_all(data_plugins).await?;
 
     let pulpcore_json: Value = get_pypi_data(&client, "pulpcore").await?;
+    sp.stop();
 
     let pulpcore_releases = pulpcore_json["releases"].as_object().unwrap().keys();
     for version in pulpcore_releases.rev() {
