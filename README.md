@@ -5,7 +5,7 @@
 Check required pulpcore version for each plugin.
 
 ```bash
-curl -L https://github.com/fao89/pdc/releases/download/0.2.0/pdc-linux-amd64 -o pdc
+curl -L https://github.com/fao89/pdc/releases/download/0.3.0/pdc-linux-amd64 -o pdc
 chmod +x pdc
 ./pdc
 ```
