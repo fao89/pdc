@@ -10,4 +10,4 @@ chmod +x pdc
 ./pdc
 ```
 
-[![asciicast](https://asciinema.org/a/334580.svg)](https://asciinema.org/a/334580)
+[![asciicast](https://asciinema.org/a/335533.svg)](https://asciinema.org/a/335533)
