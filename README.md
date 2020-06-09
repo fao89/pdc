@@ -11,3 +11,7 @@ chmod +x pdc
 ```
 
 [![asciicast](https://asciinema.org/a/335533.svg)](https://asciinema.org/a/335533)
+
+## Other languages versions
+* python - [pypdc](https://github.com/fao89/pypdc)
+* golang - [gopdc](https://github.com/fao89/gopdc)
