@@ -3,7 +3,6 @@ use reqwest::Client;
 use semver::{Version, VersionReq};
 use serde_json::Value;
 use spinners::{Spinner, Spinners};
-use std::collections::HashMap;
 use std::error::Error;
 
 #[tokio::main]
@@ -24,101 +23,109 @@ async fn main() -> Result<(), Box<dyn Error>> {
     ];
 
     let client = Client::builder().build()?;
-    let mut data_plugins = Vec::new();
-
     let spinner = Spinner::new(Spinners::Dots9, "Loading ...".into());
 
-    for plugin in pulp_plugins.iter() {
-        let data = get_pypi_data(&client, plugin);
-        data_plugins.push(data);
-    }
+    let plugin_data_futures: Vec<_> = pulp_plugins
+        .iter()
+        .map(|plugin| get_pypi_data(&client, plugin))
+        .collect();
 
-    let mut results = try_join_all(data_plugins).await?;
+    let mut plugins = try_join_all(plugin_data_futures)
+        .await?
+        .iter()
+        .map(|m| PulpPlugin::from_metadata(m.clone()))
+        .collect();
 
     let pulpcore_json = get_pypi_data(&client, "pulpcore").await?;
     spinner.stop();
 
-    let pulpcore_releases = pulpcore_json["releases"].split(',');
-    for version in pulpcore_releases.rev() {
+    let pulpcore_releases = pulpcore_json["releases"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(|x| x.to_string())
+        .collect::<Vec<String>>();
+
+    for version in pulpcore_releases.iter().rev() {
         if version.contains("3.0.0") {
             // avoiding rc versions
-            print_compatible_plugins(&"3.0.0", &mut results);
+            print_compatible_plugins(&"3.0.0", &mut plugins);
             break;
         }
-        print_compatible_plugins(&version.trim(), &mut results);
+        print_compatible_plugins(&version.trim(), &mut plugins);
     }
 
     Ok(())
 }
 
-async fn get_pypi_data(
-    client: &Client,
-    package: &str,
-) -> Result<HashMap<String, String>, Box<dyn Error>> {
-    let pypi_root = String::from("https://pypi.org/pypi/");
-    let address = format!("{}{}/json", pypi_root, package);
-    let result: Value = client.get(&address).send().await?.json().await?;
-    let mut pypi_data: HashMap<String, String> = HashMap::new();
-    pypi_data.insert("name".to_string(), package.to_string());
-    pypi_data.insert(
-        "version".to_string(),
-        result["info"]["version"].as_str().unwrap().to_string(),
-    );
-    pypi_data.insert(
-        "releases".to_string(),
-        result["releases"]
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(|x| x.to_string())
-            .collect::<Vec<String>>()
-            .join(", "),
-    );
-    if package != "pulpcore" {
-        pypi_data.insert(
-            "requires".to_string(),
-            result["info"]["requires_dist"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|i| i.to_string())
-                .filter(|l| l.contains("pulpcore"))
-                .last()
-                .unwrap(),
-        );
-        pypi_data.insert(
-            "clean_requires".to_string(),
-            pypi_data["requires"]
-                .as_str()
-                .split('(')
-                .nth(1)
-                .unwrap()
-                .split(')')
-                .next()
-                .map(|i| i.replace("~=", "~"))
-                .unwrap(),
-        );
-    }
-    Ok(pypi_data)
+#[derive(Debug)]
+struct PulpPlugin {
+    metadata: Value,
 }
 
-fn print_compatible_plugins(pulpcore_version: &str, plugins: &mut Vec<HashMap<String, String>>) {
-    let has_compatibility = plugins
-        .iter()
-        .any(|x| check_semver(&x["clean_requires"].as_str(), &pulpcore_version));
+impl PulpPlugin {
+    fn from_metadata(metadata: Value) -> Self {
+        PulpPlugin { metadata }
+    }
+
+    fn compatible_with(&self, pulpcore_version: &str) -> bool {
+        let requires = self.requires();
+        let clean_requires = requires
+            .as_str()
+            .split('(')
+            .nth(1)
+            .unwrap()
+            .split(')')
+            .next()
+            .map(|i| i.replace("~=", "~"))
+            .unwrap();
+        check_semver(&clean_requires, pulpcore_version)
+    }
+
+    fn version(&self) -> &str {
+        self.metadata["info"]["version"].as_str().unwrap()
+    }
+
+    fn name(&self) -> &str {
+        self.metadata["info"]["name"].as_str().unwrap()
+    }
+
+    fn requires(&self) -> String {
+        self.metadata["info"]["requires_dist"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i.to_string())
+            .filter(|l| l.contains("pulpcore"))
+            .last()
+            .unwrap()
+    }
+}
+
+async fn get_pypi_data(client: &Client, package_name: &str) -> Result<Value, Box<dyn Error>> {
+    let address = format!("https://pypi.org/pypi/{}/json", package_name);
+    let result: Value = client.get(&address).send().await?.json().await?;
+    Ok(result)
+}
+
+fn print_compatible_plugins(pulpcore_version: &str, plugins: &mut Vec<PulpPlugin>) {
+    let has_compatibility = plugins.iter().any(|p| p.compatible_with(&pulpcore_version));
+
     if has_compatibility {
         println!("\nCompatible with pulpcore-{}", pulpcore_version);
     }
     plugins
         .iter()
-        .filter(|x| check_semver(&x["clean_requires"].as_str(), &pulpcore_version))
-        .for_each(|x| {
+        .filter(|p| p.compatible_with(pulpcore_version))
+        .for_each(|p| {
             println!(
                 " -> {}-{} requirement: {}",
-                x["name"], x["version"], x["requires"]
+                p.name(),
+                p.version(),
+                p.requires()
             )
         });
-    plugins.retain(|x| !check_semver(&x["clean_requires"].as_str(), &pulpcore_version))
+    plugins.retain(|p| !p.compatible_with(pulpcore_version))
 }
 
 fn check_semver(requirement: &str, version: &str) -> bool {
