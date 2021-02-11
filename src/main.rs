@@ -39,20 +39,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let pulpcore_json = get_pypi_data(&client, "pulpcore").await?;
     spinner.stop();
 
-    let pulpcore_releases = pulpcore_json["releases"]
+    let mut pulpcore_releases = pulpcore_json["releases"]
         .as_object()
         .unwrap()
         .keys()
         .map(|x| x.to_string())
-        .collect::<Vec<String>>();
+        .filter(|x| Version::parse(x).is_ok())
+        .map(|x| Version::parse(&x).unwrap())
+        .collect::<Vec<Version>>();
+
+    pulpcore_releases.sort();
 
     for version in pulpcore_releases.iter().rev() {
-        if version.contains("3.0.0") {
-            // avoiding rc versions
-            print_compatible_plugins(&"3.0.0", &mut plugins);
-            break;
-        }
-        print_compatible_plugins(&version.trim(), &mut plugins);
+        print_compatible_plugins(&version.to_string().trim(), &mut plugins);
     }
 
     Ok(())
@@ -78,6 +77,7 @@ impl PulpPlugin {
             .split(')')
             .next()
             .map(|i| i.replace("~=", "~"))
+            .map(|i| i.replace(",", " "))
             .unwrap();
         check_semver(&clean_requires, pulpcore_version)
     }
