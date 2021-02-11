@@ -43,7 +43,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .as_object()
         .unwrap()
         .keys()
-        .map(|x| x.to_string())
         .filter(|x| Version::parse(x).is_ok())
         .map(|x| Version::parse(&x).unwrap())
         .collect::<Vec<Version>>();
@@ -76,8 +75,7 @@ impl PulpPlugin {
             .unwrap()
             .split(')')
             .next()
-            .map(|i| i.replace("~=", "~"))
-            .map(|i| i.replace(",", " "))
+            .map(|i| i.replace("~=", "~").replace(",", " "))
             .unwrap();
         check_semver(&clean_requires, pulpcore_version)
     }
