@@ -1,7 +1,9 @@
+mod pdc;
+use self::pdc::PulpPlugin;
+use self::pdc::{get_pypi_data, print_compatible_plugins};
 use futures::future::try_join_all;
 use reqwest::Client;
-use semver::{Version, VersionReq};
-use serde_json::Value;
+use semver::Version;
 use spinners::{Spinner, Spinners};
 use std::error::Error;
 
@@ -54,81 +56,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
-}
-
-#[derive(Debug)]
-struct PulpPlugin {
-    metadata: Value,
-}
-
-impl PulpPlugin {
-    fn from_metadata(metadata: Value) -> Self {
-        PulpPlugin { metadata }
-    }
-
-    fn compatible_with(&self, pulpcore_version: &str) -> bool {
-        let requires = self.requires();
-        let clean_requires = requires
-            .as_str()
-            .split('(')
-            .nth(1)
-            .unwrap()
-            .split(')')
-            .next()
-            .map(|i| i.replace("~=", "~").replace(",", " "))
-            .unwrap();
-        check_semver(&clean_requires, pulpcore_version)
-    }
-
-    fn version(&self) -> &str {
-        self.metadata["info"]["version"].as_str().unwrap()
-    }
-
-    fn name(&self) -> &str {
-        self.metadata["info"]["name"].as_str().unwrap()
-    }
-
-    fn requires(&self) -> String {
-        self.metadata["info"]["requires_dist"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|i| i.to_string())
-            .filter(|l| l.contains("pulpcore"))
-            .last()
-            .unwrap()
-    }
-}
-
-async fn get_pypi_data(client: &Client, package_name: &str) -> Result<Value, Box<dyn Error>> {
-    let address = format!("https://pypi.org/pypi/{}/json", package_name);
-    let result: Value = client.get(&address).send().await?.json().await?;
-    Ok(result)
-}
-
-fn print_compatible_plugins(pulpcore_version: &str, plugins: &mut Vec<PulpPlugin>) {
-    let has_compatibility = plugins.iter().any(|p| p.compatible_with(&pulpcore_version));
-
-    if has_compatibility {
-        println!("\nCompatible with pulpcore-{}", pulpcore_version);
-    }
-    plugins
-        .iter()
-        .filter(|p| p.compatible_with(pulpcore_version))
-        .for_each(|p| {
-            println!(
-                " -> {}-{} requirement: {}",
-                p.name(),
-                p.version(),
-                p.requires()
-            )
-        });
-    plugins.retain(|p| !p.compatible_with(pulpcore_version))
-}
-
-fn check_semver(requirement: &str, version: &str) -> bool {
-    let default_req = VersionReq::parse("<3.0.1").unwrap();
-    let r = VersionReq::parse(requirement).unwrap_or(default_req);
-    let v = Version::parse(version).unwrap();
-    r.matches(&v)
 }
