@@ -11,7 +11,7 @@ pub async fn get_pypi_data(client: &Client, package_name: &str) -> Result<Value,
 }
 
 pub fn print_compatible_plugins(pulpcore_version: &str, plugins: &mut Vec<PulpPlugin>) {
-    let has_compatibility = plugins.iter().any(|p| p.compatible_with(&pulpcore_version));
+    let has_compatibility = plugins.iter().any(|p| p.compatible_with(pulpcore_version));
 
     if has_compatibility {
         println!("\nCompatible with pulpcore-{}", pulpcore_version);

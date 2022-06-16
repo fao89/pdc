@@ -20,7 +20,7 @@ impl PulpPlugin {
             .unwrap()
             .split(')')
             .next()
-            .map(|i| i.replace("~=", "~").replace(",", " "))
+            .map(|i| i.replace("~=", "~").replace(',', " "))
             .unwrap();
         check_semver(&clean_requires, pulpcore_version)
     }
