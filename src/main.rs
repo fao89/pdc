@@ -45,14 +45,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .as_object()
         .unwrap()
         .keys()
-        .filter(|x| Version::parse(x).is_ok())
-        .map(|x| Version::parse(&x).unwrap())
+        .filter_map(|x| Version::parse(x).ok())
         .collect::<Vec<Version>>();
 
     pulpcore_releases.sort();
 
     for version in pulpcore_releases.iter().rev() {
-        print_compatible_plugins(&version.to_string().trim(), &mut plugins);
+        print_compatible_plugins(version.to_string().trim(), &mut plugins);
     }
 
     Ok(())
